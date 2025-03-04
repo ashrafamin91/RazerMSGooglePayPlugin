@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -30,12 +31,17 @@ import com.google.android.gms.wallet.PaymentData;
 import com.google.android.gms.wallet.button.ButtonConstants;
 import com.google.android.gms.wallet.button.ButtonOptions;
 import com.google.android.gms.wallet.button.PayButton;
+import com.molpay.molpayxdk.MOLPayActivity;
+import com.molpay.molpayxdk.googlepay.ActivityGP;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.Calendar;
+import java.util.HashMap;
+
 import rms.library.googlepay.R;
-import rms.library.googlepay.WebActivity;
+//import rms.library.googlepay.WebActivity;
 import rms.library.googlepay.databinding.ActivityCheckoutBinding;
 import rms.library.googlepay.util.PaymentsUtil;
 import rms.library.googlepay.viewmodel.CheckoutViewModel;
@@ -54,27 +60,30 @@ public class CheckoutActivity extends AppCompatActivity {
     private ProgressBar pbLoading;
     private PayButton googlePayButton;
 
-    // Handle potential conflict from calling loadPaymentData.
-    ActivityResultLauncher<IntentSenderRequest> resolvePaymentForResult = registerForActivityResult(
-            new ActivityResultContracts.StartIntentSenderForResult(),
-            result -> {
-                Log.e("logGooglePay" , "resolvePaymentForResult");
-                switch (result.getResultCode()) {
-                    case Activity.RESULT_OK:
-                        Intent resultData = result.getData();
-                        if (resultData != null) {
-                            PaymentData paymentData = PaymentData.getFromIntent(result.getData());
-                            if (paymentData != null) {
-                                handlePaymentSuccess(paymentData);
-                            }
-                        }
-                        break;
+    HashMap<Object, Object> paymentDetails = new HashMap<>();
 
-                    case Activity.RESULT_CANCELED:
-                        // The user cancelled the payment attempt
-                        break;
-                }
-            });
+    // Handle potential conflict from calling loadPaymentData.
+//    ActivityResultLauncher<IntentSenderRequest> resolvePaymentForResult = registerForActivityResult(
+//            new ActivityResultContracts.StartIntentSenderForResult(),
+//            result -> {
+//                Log.e("logGooglePay" , "resolvePaymentForResult");
+//
+//                switch (result.getResultCode()) {
+//                    case Activity.RESULT_OK:
+//                        Intent resultData = result.getData();
+//                        if (resultData != null) {
+//                            PaymentData paymentData = PaymentData.getFromIntent(result.getData());
+//                            if (paymentData != null) {
+//                                handlePaymentSuccess(paymentData);
+//                            }
+//                        }
+//                        break;
+//
+//                    case Activity.RESULT_CANCELED:
+//                        // The user cancelled the payment attempt
+//                        break;
+//                }
+//            });
 
     /**
      * Initialize the Google Pay API on creation of the activity
@@ -138,40 +147,104 @@ public class CheckoutActivity extends AppCompatActivity {
 
         Log.e("logGooglePay" , "requestPayment");
 
-        // Disables the button to prevent multiple clicks.
-        googlePayButton.setClickable(false);
+        paymentDetails = new HashMap<>();
 
-        // The price provided to the API should include taxes and shipping.
-        // This price is not displayed to the user.
-        long totalPriceCents = 101;
+        /*
+            TODO: Follow Google’s instructions to request production access for your app: https://developers.google.com/pay/api/android/guides/test-and-deploy/request-prod-access
+            *
+             Choose the integration type Gateway when prompted, and provide screenshots of your app for review.
+             After your app has been approved, test your integration in production by set mp_sandbox_mode = false & use production mp_verification_key & mp_merchant_ID.
+             Then launching Google Pay from a signed, release build of your app.
+             */
+        paymentDetails.put(MOLPayActivity.mp_sandbox_mode, true); // Only set to false once you have request production access for your app
 
-        final Task<PaymentData> task = model.getLoadPaymentDataTask(totalPriceCents);
+        // TODO: Enter your merchant account credentials before test run
+        paymentDetails.put(MOLPayActivity.mp_merchant_ID, "SB_molpayxdk"); // Your sandbox / production merchant ID
+        paymentDetails.put(MOLPayActivity.mp_verification_key, "4445db44bdb60687a8e7f7903a59c3a9"); // Your sandbox / production verification key
 
-        task.addOnCompleteListener(completedTask -> {
-            Log.e("logGooglePay" , "addOnCompleteListener");
+        paymentDetails.put(MOLPayActivity.mp_amount, "1.01"); // Must be in 2 decimal points format
+        paymentDetails.put(MOLPayActivity.mp_order_ID, Calendar.getInstance().getTimeInMillis()); // Must be unique
+        paymentDetails.put(MOLPayActivity.mp_currency, "MYR"); // Must matched mp_country
+        paymentDetails.put(MOLPayActivity.mp_country, "MY"); // Must matched mp_currency
+        paymentDetails.put(MOLPayActivity.mp_bill_description, "The bill description");
+        paymentDetails.put(MOLPayActivity.mp_bill_name, "The bill name");
+        paymentDetails.put(MOLPayActivity.mp_bill_email, "payer.email@fiuu.com");
+        paymentDetails.put(MOLPayActivity.mp_bill_mobile, "123456789");
 
-            if (completedTask.isSuccessful()) {
-                handlePaymentSuccess(completedTask.getResult());
-            } else {
-                Exception exception = completedTask.getException();
-                if (exception instanceof ResolvableApiException) {
-                    PendingIntent resolution = ((ResolvableApiException) exception).getResolution();
-                    resolvePaymentForResult.launch(new IntentSenderRequest.Builder(resolution).build());
+        paymentDetails.put(MOLPayActivity.mp_extended_vcode, false); // Optional : Set true if your account enabled extended Verify Payment
+        openGPActivityWithResult();
 
-                } else if (exception instanceof ApiException) {
-                    ApiException apiException = (ApiException) exception;
-                    handleError(apiException.getStatusCode(), apiException.getMessage());
+//        // Disables the button to prevent multiple clicks.
+//        googlePayButton.setClickable(false);
+//
+//        // The price provided to the API should include taxes and shipping.
+//        // This price is not displayed to the user.
+//        long totalPriceCents = 101;
+//
+//        final Task<PaymentData> task = model.getLoadPaymentDataTask(totalPriceCents);
+//
+//        task.addOnCompleteListener(completedTask -> {
+//            Log.e("logGooglePay" , "addOnCompleteListener");
+//
+//            if (completedTask.isSuccessful()) {
+//                handlePaymentSuccess(completedTask.getResult());
+//            } else {
+//                Exception exception = completedTask.getException();
+//                if (exception instanceof ResolvableApiException) {
+//                    PendingIntent resolution = ((ResolvableApiException) exception).getResolution();
+//                    resolvePaymentForResult.launch(new IntentSenderRequest.Builder(resolution).build());
+//
+//                } else if (exception instanceof ApiException) {
+//                    ApiException apiException = (ApiException) exception;
+//                    handleError(apiException.getStatusCode(), apiException.getMessage());
+//
+//                } else {
+//                    handleError(CommonStatusCodes.INTERNAL_ERROR, "Unexpected non API" +
+//                            " exception when trying to deliver the task result to an activity!");
+//                }
+//            }
+//
+//            // Re-enables the Google Pay payment button.
+//            googlePayButton.setClickable(true);
+//        });
+    }
 
+    private void openGPActivityWithResult() {
+        Intent intent = new Intent(CheckoutActivity.this, ActivityGP.class); // Used ActivityGP for Google Pay
+        intent.putExtra(MOLPayActivity.MOLPayPaymentDetails, paymentDetails);
+        gpActivityResultLauncher.launch(intent);
+    }
+
+    ActivityResultLauncher<Intent> gpActivityResultLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == MOLPayActivity.RESULT_OK && result.getData() != null) {
+                    Intent data = result.getData();
+                    String transactionResult = data.getStringExtra(MOLPayActivity.MOLPayTransactionResult);
+
+                    if (transactionResult != null) {
+                        Log.e("logGooglePay" , "transactionResult = " + data.getStringExtra(MOLPayActivity.MOLPayTransactionResult));
+
+//                        startActivity(new Intent(this, CheckoutSuccessActivity.class));
+                        Intent intent = new Intent(this, CheckoutSuccessActivity.class);
+                        intent.putExtra(CheckoutSuccessActivity.EXTRA_MESSAGE, data.getStringExtra(MOLPayActivity.MOLPayTransactionResult));
+                        startActivity(intent);
+
+//                        TextView tw = findViewById(R.id.resultTV);
+//                        tw.setText(data.getStringExtra(MOLPayActivity.MOLPayTransactionResult));
+                    }
+
+//                    if (data.getData() != null && transactionResult != null) {
+//                        TextView tw = findViewById(R.id.resultTV);
+//                        tw.setText(data.getStringExtra(MOLPayActivity.MOLPayTransactionResult));
+//                    }
                 } else {
-                    handleError(CommonStatusCodes.INTERNAL_ERROR, "Unexpected non API" +
-                            " exception when trying to deliver the task result to an activity!");
+                    Log.e("logGooglePay" , "transactionResult = null");
+//                    TextView tw = findViewById(R.id.resultTV);
+//                    tw.setText("result = null");
                 }
             }
-
-            // Re-enables the Google Pay payment button.
-            googlePayButton.setClickable(true);
-        });
-    }
+    );
 
     /**
      * PaymentData response object contains the payment information, as well as any additional
@@ -181,50 +254,50 @@ public class CheckoutActivity extends AppCompatActivity {
      * @see <a href="https://developers.google.com/pay/api/android/reference/
      * object#PaymentData">PaymentData</a>
      */
-    private void handlePaymentSuccess(PaymentData paymentData) {
-
-        pbLoading.setVisibility(View.VISIBLE);
-        Log.e("logGooglePay" , "handlePaymentSuccess");
-
-        final String paymentInfo = paymentData.toJson();
-
-        try {
-            // TODO: Send the payment info e.g. (all info are compulsory) :
-            paymentInput.put("orderId", "order123"); // Unique payment order id
-            paymentInput.put("amount", "1.01"); // Payment amount
-            paymentInput.put("currency", "MYR"); // Payment currency
-            paymentInput.put("billName", "Cat Steven"); // Payer name
-            paymentInput.put("billEmail", "cat.steven@gmail.com"); // Payer email
-            paymentInput.put("billPhone", "601234567890"); // Payer phone
-            paymentInput.put("billDesc", "Google Pay Testing"); // Payment description
-            paymentInput.put("merchantId", "xxxxxxxxx"); // Your registered merchantId
-            paymentInput.put("verificationKey", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"); // Your registered verificationKey
-
-            /*
-            TODO: Follow Google’s instructions to request production access for your app: https://developers.google.com/pay/api/android/guides/test-and-deploy/request-prod-access
-            *
-             Choose the integration type Gateway when prompted, and provide screenshots of your app for review.
-             After your app has been approved, test your integration in production by setting the environment to GooglePayEnvironment.Production
-             Then launching Google Pay from a signed, release build of your app.
-             Remember to use your live mode verificationKey & merchantId. Set isSandbox = false for production environment.
-             */
-            paymentInput.put("isSandbox", "true"); // True = Testing ; False = Production
-
-            JSONObject paymentInputObj = paymentInput;
-
-            String paymentInput = paymentInputObj.toString();
-
-            runOnUiThread(() -> {
-                Intent i = new Intent(CheckoutActivity.this, WebActivity.class); // Redirect To WebActivity (RMS library)
-                i.putExtra("paymentInput", paymentInput);
-                i.putExtra("paymentInfo", paymentInfo);
-                startActivityForResult(i, LOAD_TRANSACTION_DATA_REQUEST_CODE);
-            });
-
-        } catch (JSONException e) {
-//            Log.e(Constants.LOG_GOOGLE_PAY, "handlePaymentSuccess JSONException: " + e);
-        }
-    }
+//    private void handlePaymentSuccess(PaymentData paymentData) {
+//
+//        pbLoading.setVisibility(View.VISIBLE);
+//        Log.e("logGooglePay" , "handlePaymentSuccess");
+//
+//        final String paymentInfo = paymentData.toJson();
+//
+//        try {
+//            // TODO: Send the payment info e.g. (all info are compulsory) :
+//            paymentInput.put("orderId", "order123"); // Unique payment order id
+//            paymentInput.put("amount", "1.01"); // Payment amount
+//            paymentInput.put("currency", "MYR"); // Payment currency
+//            paymentInput.put("billName", "Cat Steven"); // Payer name
+//            paymentInput.put("billEmail", "cat.steven@gmail.com"); // Payer email
+//            paymentInput.put("billPhone", "601234567890"); // Payer phone
+//            paymentInput.put("billDesc", "Google Pay Testing"); // Payment description
+//            paymentInput.put("merchantId", "SB_molpayxdk"); // Your registered merchantId
+//            paymentInput.put("verificationKey", "4445db44bdb60687a8e7f7903a59c3a9"); // Your registered verificationKey
+//
+//            /*
+//            TODO: Follow Google’s instructions to request production access for your app: https://developers.google.com/pay/api/android/guides/test-and-deploy/request-prod-access
+//            *
+//             Choose the integration type Gateway when prompted, and provide screenshots of your app for review.
+//             After your app has been approved, test your integration in production by setting the environment to GooglePayEnvironment.Production
+//             Then launching Google Pay from a signed, release build of your app.
+//             Remember to use your live mode verificationKey & merchantId. Set isSandbox = false for production environment.
+//             */
+//            paymentInput.put("isSandbox", "true"); // True = Testing ; False = Production
+//
+//            JSONObject paymentInputObj = paymentInput;
+//
+//            String paymentInput = paymentInputObj.toString();
+//
+//            runOnUiThread(() -> {
+//                Intent i = new Intent(CheckoutActivity.this, WebActivity.class); // Redirect To WebActivity (RMS library)
+//                i.putExtra("paymentInput", paymentInput);
+//                i.putExtra("paymentInfo", paymentInfo);
+//                startActivityForResult(i, LOAD_TRANSACTION_DATA_REQUEST_CODE);
+//            });
+//
+//        } catch (JSONException e) {
+////            Log.e(Constants.LOG_GOOGLE_PAY, "handlePaymentSuccess JSONException: " + e);
+//        }
+//    }
 
     /**
      * At this stage, the user has already seen a popup informing them an error occurred. Normally,
@@ -235,50 +308,50 @@ public class CheckoutActivity extends AppCompatActivity {
      * @see <a href="https://developers.google.com/android/reference/com/google/android/gms/wallet/
      * WalletConstants#constant-summary">Wallet Constants Library</a>
      */
-    private void handleError(int statusCode, @Nullable String message) {
-//        Log.e("loadPaymentData failed", String.format(Locale.getDefault(), "Error code: %d, Message: %s", statusCode, message));
-    }
+//    private void handleError(int statusCode, @Nullable String message) {
+////        Log.e("loadPaymentData failed", String.format(Locale.getDefault(), "Error code: %d, Message: %s", statusCode, message));
+//    }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-
-        super.onActivityResult(requestCode, resultCode, data);
-
-        CharSequence response;
-
-        if (requestCode == LOAD_TRANSACTION_DATA_REQUEST_CODE) {
-
-            pbLoading.setVisibility(View.GONE);
-
-            switch (resultCode) {
-                
-                case AppCompatActivity.RESULT_OK:
-
-                    // Response Success CallBack
-                    response = data.getStringExtra("response");
-
-                    Toast toast = Toast.makeText(this, response, Toast.LENGTH_LONG);
-                    toast.show();
-
-                    startActivity(new Intent(this, CheckoutSuccessActivity.class));
-
-                    break;
-
-                case AppCompatActivity.RESULT_CANCELED:
-                    // The user cancelled the payment attempt
-                    // Response Error CallBack
-                    response = data.getStringExtra("response");
-
-                    Toast toast2 = Toast.makeText(this, response, Toast.LENGTH_LONG);
-                    toast2.show();
-                    break;
-
-                case AutoResolveHelper.RESULT_ERROR:
-                    Status status = AutoResolveHelper.getStatusFromIntent(data);
-                    handleError(status.getStatusCode() , status.getStatusMessage());
-                    break;
-            }
-        }
-    }
+//    @Override
+//    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+//
+//        super.onActivityResult(requestCode, resultCode, data);
+//
+//        CharSequence response;
+//
+//        if (requestCode == LOAD_TRANSACTION_DATA_REQUEST_CODE) {
+//
+//            pbLoading.setVisibility(View.GONE);
+//
+//            switch (resultCode) {
+//
+//                case AppCompatActivity.RESULT_OK:
+//
+//                    // Response Success CallBack
+//                    response = data.getStringExtra("response");
+//
+//                    Toast toast = Toast.makeText(this, response, Toast.LENGTH_LONG);
+//                    toast.show();
+//
+//                    startActivity(new Intent(this, CheckoutSuccessActivity.class));
+//
+//                    break;
+//
+//                case AppCompatActivity.RESULT_CANCELED:
+//                    // The user cancelled the payment attempt
+//                    // Response Error CallBack
+//                    response = data.getStringExtra("response");
+//
+//                    Toast toast2 = Toast.makeText(this, response, Toast.LENGTH_LONG);
+//                    toast2.show();
+//                    break;
+//
+//                case AutoResolveHelper.RESULT_ERROR:
+//                    Status status = AutoResolveHelper.getStatusFromIntent(data);
+//                    handleError(status.getStatusCode() , status.getStatusMessage());
+//                    break;
+//            }
+//        }
+//    }
 
 }
